@@ -7,22 +7,19 @@ import time
 st.set_page_config(page_title="Lead-Maschine für pb.socialhouse", page_icon="🚀", layout="wide")
 
 st.title("🚀 pb.socialhouse – B2B Lead-Generator Oberösterreich")
-st.subheader("Systematischer Scan nach KMUs ohne eigene Website")
+st.subheader("Echte Live-Daten: KMUs ohne eigene Website")
 st.write("---")
 
 # Eingabemaske für die Suche
 col1, col2 = st.columns(2)
 with col1:
-    # Upgrade: Bezirks-Auswahl für ganz Oberösterreich
+    # Optimiert auf konkrete Städte in OÖ für echte, blitzschnelle Treffer
     region = st.selectbox(
-        "Bezirk / Region in OÖ wählen:",
+        "Stadt / Gemeinde in OÖ wählen:",
         [
-            "Linz", "Leonding", "Wels", "Steyr", 
-            "Linz-Land", "Wels-Land", "Urfahr-Umgebung", 
-            "Gmunden", "Vöcklabruck", "Braunau am Inn", 
-            "Ried im Innkreis", "Schärding", "Grieskirchen", 
-            "Eferding", "Rohrbach", "Freistadt", 
-            "Perg", "Steyr-Land", "Kirchdorf an der Krems"
+            "Linz", "Leonding", "Wels", "Steyr", "Traun", "Enns", 
+            "Vöcklabruck", "Gmunden", "Braunau am Inn", "Ried im Innkreis", 
+            "Schärding", "Grieskirchen", "Freistadt", "Perg", "Ansfelden", "Bad Ischl"
         ]
     )
 with col2:
@@ -37,14 +34,14 @@ with col2:
         }[x]
     )
 
-if st.button("🔍 Bezirk scannen & Leads extrahieren", type="primary"):
-    with st.spinner(f"Scanne Bezirk {region} nach Betrieben ohne Website..."):
+if st.button("🔍 Region live scannen", type="primary"):
+    with st.spinner(f"Suche echte Betriebe in {region}..."):
         
-        # Overpass API Query - Optimiert auf Bezirke (Admin-Level 8/9 in Österreich)
+        # Overpass API Query - Jetzt absolut präzise auf Stadtgrenzen geschärft
         overpass_url = "http://overpass-api.de/api/interpreter"
         overpass_query = f"""
-        [out:json][timeout:30];
-        area[name="{region}"]->.searchArea;
+        [out:json][timeout:20];
+        area[name="{region}"][boundary=administrative]->.searchArea;
         (
           node["shop"="{branche}"](area.searchArea);
           way["shop"="{branche}"](area.searchArea);
@@ -58,55 +55,51 @@ if st.button("🔍 Bezirk scannen & Leads extrahieren", type="primary"):
         api_failed = False
         
         try:
-            response = requests.post(overpass_url, data={'data': overpass_query}, timeout=15)
+            response = requests.post(overpass_url, data={'data': overpass_query}, timeout=18)
             data = response.json()
             
             if "elements" in data:
                 for element in data["elements"]:
                     tags = element.get("tags", {})
-                    # FILTER: Nur ohne Website
+                    # FILTER: Nur Betriebe OHNE Website
                     if "website" not in tags and "contact:website" not in tags:
-                        name = tags.get("name", "Unbekannter Betrieb")
-                        phone = tags.get("phone", tags.get("contact:phone", "Nicht hinterlegt"))
-                        street = tags.get("addr:street", "")
-                        hnr = tags.get("addr:housenumber", "")
-                        city = tags.get("addr:city", region)
-                        address = f"{street} {hnr}, {city}".strip() if street else f"Region {region}"
-                        
-                        leads.append({
-                            "Firmenname": name,
-                            "Branche / Typ": {
-                                "craftsman": "Handwerker",
-                                "restaurant": "Gastronomie",
-                                "hairdresser": "Friseur / Beauty",
-                                "car_repair": "KFZ-Werkstatt"
-                            }.get(branche, branche.capitalize()),
-                            "Telefonnummer": phone,
-                            "Adresse": address,
-                            "Status": "❌ Keine Website"
-                        })
+                        name = tags.get("name")
+                        if name: # Nur hinzufügen, wenn ein echter Name existiert
+                            phone = tags.get("phone", tags.get("contact:phone", "Nicht hinterlegt"))
+                            street = tags.get("addr:street", "")
+                            hnr = tags.get("addr:housenumber", "")
+                            address = f"{street} {hnr}, {region}".strip() if street else f"Bereich {region}"
+                            
+                            leads.append({
+                                "Firmenname": name,
+                                "Branche": {
+                                    "craftsman": "Handwerk",
+                                    "restaurant": "Gastronomie",
+                                    "hairdresser": "Friseur / Beauty",
+                                    "car_repair": "KFZ-Werkstatt"
+                                }.get(branche, branch.capitalize()),
+                                "Telefonnummer": phone,
+                                "Adresse": address,
+                                "Status": "❌ Keine Website"
+                            })
         except Exception:
             api_failed = True
 
-        # Sicherheitsnetz, falls die freie API überlastet ist
-        if api_failed or len(leads) == 0:
-            time.sleep(1.2)
-            leads = [
-                {"Firmenname": f"Müller & Partner {branche.capitalize()}", "Branche / Typ": branche.capitalize(), "Telefonnummer": "+43 732 998877", "Adresse": f"Hauptstraße 1, {region}", "Status": "❌ Keine Website"},
-                {"Firmenname": f"Stadler {branche.capitalize()} KG", "Branche / Typ": branche.capitalize(), "Telefonnummer": "Nicht hinterlegt", "Adresse": f"Landstraße 45, {region}", "Status": "❌ Keine Website"},
-                {"Firmenname": f"Premium {region} GmbH", "Branche / Typ": branche.capitalize(), "Telefonnummer": "+43 664 1122334", "Adresse": f"Gewerbezone 3, {region}", "Status": "❌ Keine Website"}
-            ]
-            st.caption("⚠️ *Hinweis für die Demo: Live-Server ausgelastet. Ansicht simuliert reale OÖ-Strukturen.*")
-
-        # Daten anzeigen
-        df = pd.DataFrame(leads)
-        st.success(f"Erfolg! {len(df)} potenzielle Leads ohne Website in '{region}' lokalisiert.")
-        st.dataframe(df, use_container_width=True)
-        
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label=f"📥 Lead-Liste ({region}) als CSV exportieren",
-            data=csv,
-            file_name=f"leads_{branche}_{region}.csv",
-            mime='text/csv',
-        )
+        # Falls wirklich mal gar nichts gefunden wird oder die API blockiert
+        if api_failed:
+            st.error("Der Live-Server ist gerade überlastet. Bitte versuche es in wenigen Sekunden noch einmal.")
+        elif len(leads) == 0:
+            st.info(f"In {region} wurden aktuell alle Betriebe dieser Branche mit einer Website gefunden – oder OpenStreetMap hat für diese Nische dort keine Daten.")
+        else:
+            # Daten anzeigen
+            df = pd.DataFrame(leads)
+            st.success(f"Erfolg! {len(df)} ECHTE Leads ohne Website in {region} gefunden.")
+            st.dataframe(df, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label=f"📥 Echte Liste für {region} exportieren",
+                data=csv,
+                file_name=f"echte_leads_{region}.csv",
+                mime='text/csv',
+            )
